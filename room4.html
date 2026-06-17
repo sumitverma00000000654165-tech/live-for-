@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Student - Room 1</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background: #f0f2f5; }
+        .video-wrapper { position: relative; width: 100%; padding-top: 56.25%; background: #000; border-radius: 1rem; overflow: hidden; margin-bottom: 1rem; }
+        .video-wrapper iframe, .video-wrapper #player { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none; }
+        .no-stream-msg { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #fff; text-align: center; }
+        .chat-box { height: 400px; overflow-y: auto; background: #fff; border-radius: 0.5rem; padding: 0.8rem; }
+        .chat-msg { margin-bottom: 0.5rem; word-break: break-word; }
+        .chat-msg strong { color: #0d6efd; }
+        #savedName { font-weight: bold; color: #0d6efd; }
+    </style>
+</head>
+<body>
+    <div class="container py-3">
+        <h2 class="mb-3">📺 Live Class – Room 4</h2>
+        <div class="row">
+            <div class="col-md-8">
+                <div class="video-wrapper" id="videoContainer">
+                    <div id="player"></div>
+                    <div id="noStreamMsg" class="no-stream-msg">
+                        <h4>⏳ स्ट्रीम का इंतज़ार है...</h4>
+                        <p>एडमिन जल्द ही वीडियो सेट करेगा।</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-primary text-white fw-bold">💬 Live Chat</div>
+                    <div class="chat-box" id="chatMessages"></div>
+                    <div class="card-footer">
+                        <!-- Name Section -->
+                        <div id="nameContainer" class="mb-2">
+                            <!-- agar naam nahi hai to input dikhega, warna saved name -->
+                        </div>
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="messageInput" placeholder="मैसेज लिखें...">
+                            <button class="btn btn-primary" id="sendBtn">भेजें</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.11/firebase-database-compat.js"></script>
+    <script>
+        const firebaseConfig = { apiKey: "AIzaSyBeZl52HEWGz-vE72QZ5taznvpYTfq3QUk", authDomain: "login-and-reg-5728d.firebaseapp.com", databaseURL: "https://login-and-reg-5728d-default-rtdb.firebaseio.com", projectId: "login-and-reg-5728d", storageBucket: "login-and-reg-5728d.firebasestorage.app", messagingSenderId: "435846403197", appId: "1:435846403197:web:d6a05a55e40839d15dcd14" };
+        firebase.initializeApp(firebaseConfig);
+        const rtdb = firebase.database();
+        const room = "4";
+
+        // ---- Name Management (localStorage) ----
+        const STORAGE_KEY = 'studentName';  // एक बार सेव, सभी रूम के लिए वही नाम
+
+        function getSavedName() {
+            return localStorage.getItem(STORAGE_KEY);
+        }
+
+        function saveName(name) {
+            localStorage.setItem(STORAGE_KEY, name);
+        }
+
+        function renderNameUI() {
+            const container = document.getElementById('nameContainer');
+            const saved = getSavedName();
+            if (saved) {
+                // नाम सेव है – सिर्फ दिखाओ
+                container.innerHTML = `👤 आप: <span id="savedName">${saved}</span>`;
+            } else {
+                // नाम नहीं है – इनपुट और बटन
+                container.innerHTML = `
+                    <div class="input-group input-group-sm">
+                        <input type="text" id="nameInput" class="form-control" placeholder="अपना नाम डालें" maxlength="20">
+                        <button class="btn btn-outline-primary" id="saveNameBtn">Save</button>
+                    </div>
+                `;
+                document.getElementById('saveNameBtn').addEventListener('click', () => {
+                    const name = document.getElementById('nameInput').value.trim();
+                    if (!name) return alert('कृपया नाम डालें');
+                    saveName(name);
+                    renderNameUI();  // UI अपडेट
+                });
+            }
+        }
+        renderNameUI();
+
+        // Helper – हमेशा सेव नाम लौटाए (अगर नहीं है तो 'Guest')
+        function getUserName() {
+            return getSavedName() || 'Guest';
+        }
+
+        // ---- YouTube Player ----
+        let player = null; let ytReady = false; let currentVideoId = null; let loadedVideoId = null;
+        window.onYouTubeIframeAPIReady = function() {
+            ytReady = true;
+            if (currentVideoId && currentVideoId !== loadedVideoId) createOrLoadPlayer(currentVideoId);
+        };
+        function createOrLoadPlayer(videoId) {
+            if (!ytReady || !videoId) return;
+            if (player && loadedVideoId === videoId) return;
+            if (player) { player.destroy(); player = null; }
+            document.getElementById('noStreamMsg').style.display = 'none';
+            player = new YT.Player('player', { videoId: videoId, width: '100%', height: '100%', playerVars: { autoplay: 0, controls: 1, modestbranding: 1, rel: 0 } });
+            loadedVideoId = videoId;
+        }
+        const streamRef = rtdb.ref(`rooms/${room}/stream`);
+        streamRef.on('value', (snap) => {
+            const data = snap.val();
+            const msgDiv = document.getElementById('noStreamMsg');
+            if (data && data.youtubeId) {
+                const id = data.youtubeId;
+                if (id && id.length === 11) {
+                    currentVideoId = id;
+                    if (ytReady) createOrLoadPlayer(id);
+                } else {
+                    msgDiv.style.display = 'block';
+                    msgDiv.innerHTML = '<h4>❌ गलत स्ट्रीम ID</h4>';
+                    if (player) { player.destroy(); player = null; loadedVideoId = null; }
+                }
+            } else {
+                msgDiv.style.display = 'block';
+                msgDiv.innerHTML = '<h4>⏳ स्ट्रीम का इंतज़ार है...</h4><p>एडमिन जल्द ही वीडियो सेट करेगा।</p>';
+                if (player) { player.destroy(); player = null; loadedVideoId = null; }
+            }
+        });
+
+        // ---- Chat ----
+        const chatRef = rtdb.ref(`rooms/${room}/chat/messages`);
+        const messagesDiv = document.getElementById('chatMessages');
+        chatRef.limitToLast(50).on('child_added', (snap) => {
+            const msg = snap.val();
+            const time = msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' }) : '';
+            const div = document.createElement('div');
+            div.className = 'chat-msg';
+            div.innerHTML = `<strong>${msg.username || 'Anonymous'}</strong> <small class="text-muted">${time}</small><br>${msg.message}`;
+            messagesDiv.appendChild(div);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+        });
+
+        document.getElementById('sendBtn').addEventListener('click', () => {
+            const msg = document.getElementById('messageInput').value.trim();
+            if (!msg) return;
+            const name = getUserName();  // सेव्ड नाम या Guest
+            chatRef.push({ username: name, message: msg, timestamp: firebase.database.ServerValue.TIMESTAMP });
+            document.getElementById('messageInput').value = '';
+        });
+        document.getElementById('messageInput').addEventListener('keypress', (e) => { if (e.key === 'Enter') document.getElementById('sendBtn').click(); });
+
+        // Load YouTube API
+        (function loadYT() {
+            const tag = document.createElement('script');
+            tag.src = 'https://www.youtube.com/iframe_api';
+            document.head.appendChild(tag);
+        })();
+    </script>
+</body>
+</html>
